@@ -1,0 +1,17 @@
+{
+  "database": {
+    "host": "11.142.154.110",
+    "port": 3306,
+    "name": "fuaq8xj3",
+    "username": "with_meszuizkjkswzzpl",
+    "password": "G50laKOk@s$lDg"
+  },
+  "server": {
+    "port": 8080
+  },
+  "application": {
+    "name": "电话号码簿管理系统",
+    "version": "1.0.0",
+    "description": "基于Spring Boot的现代化电话号码簿管理系统"
+  }
+}
