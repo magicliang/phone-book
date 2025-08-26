@@ -18,19 +18,12 @@ spring:
     console:
       enabled: true
   
-  cache:
-    type: simple
-  
-  test:
-    database:
-      replace: none
-
-logging:
-  level:
-    com.example.phonebook: DEBUG
-    org.springframework.web: DEBUG
-    org.hibernate.SQL: DEBUG
-    org.hibernate.type.descriptor.sql.BasicBinder: TRACE
+  logging:
+    level:
+      com.example.phonebook: DEBUG
+      org.springframework.web: DEBUG
+      org.hibernate.SQL: DEBUG
+      org.hibernate.type.descriptor.sql.BasicBinder: TRACE
 
 management:
   endpoints:
