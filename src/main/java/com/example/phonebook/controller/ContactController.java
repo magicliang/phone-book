@@ -49,11 +49,28 @@ public class ContactController {
     @Timed(value = "contacts.create", description = "Time taken to create contact")
     public ResponseEntity<?> createContact(@Valid @RequestBody ContactDTO contactDTO) {
         try {
-            ContactDTO createdContact = contactService.createContact(contactDTO);
+            // 检查电话号码是否已存在
+            if (contactService.isPhoneNumberExists(contactDTO.getPhoneNumber(), null)) {
+                Map<String, String> error = new HashMap<>();
+                error.put("error", "电话号码已存在");
+                return ResponseEntity.badRequest().body(error);
+            }
+            
+            // 检查邮箱是否已存在
+            if (contactDTO.getEmail() != null && !contactDTO.getEmail().isEmpty() && 
+                contactService.isEmailExists(contactDTO.getEmail(), null)) {
+                Map<String, String> error = new HashMap<>();
+                error.put("error", "邮箱已存在");
+                return ResponseEntity.badRequest().body(error);
+            }
+            
             createContactCounter.increment();
+            ContactDTO createdContact = contactService.createContact(contactDTO);
             return ResponseEntity.status(HttpStatus.CREATED).body(createdContact);
-        } catch (RuntimeException e) {
-            return ResponseEntity.badRequest().body(createErrorResponse(e.getMessage()));
+        } catch (Exception e) {
+            Map<String, String> error = new HashMap<>();
+            error.put("error", "创建联系人失败: " + e.getMessage());
+            return ResponseEntity.badRequest().body(error);
         }
     }
     
@@ -62,39 +79,58 @@ public class ContactController {
      */
     @GetMapping
     @Timed(value = "contacts.list", description = "Time taken to list contacts")
-    public ResponseEntity<Map<String, Object>> getAllContacts(
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "10") int size,
+    public ResponseEntity<?> getAllContacts(
+            @RequestParam(required = false) Integer page,
+            @RequestParam(required = false) Integer size,
             @RequestParam(defaultValue = "name") String sortBy,
             @RequestParam(defaultValue = "asc") String sortDir) {
+        
+        // 如果没有分页参数，返回所有联系人的简单数组
+        if (page == null && size == null) {
+            List<ContactDTO> contacts = contactService.getAllContacts();
+            return ResponseEntity.ok()
+                    .cacheControl(CacheControl.maxAge(5, TimeUnit.MINUTES).cachePublic())
+                    .body(contacts);
+        }
+        
+        // 有分页参数时，返回分页对象
+        int pageNum = page != null ? page : 0;
+        int pageSize = size != null ? size : 10;
         
         Sort sort = sortDir.equalsIgnoreCase("desc") ? 
                 Sort.by(sortBy).descending() : Sort.by(sortBy).ascending();
         
-        Pageable pageable = PageRequest.of(page, size, sort);
+        Pageable pageable = PageRequest.of(pageNum, pageSize, sort);
         Page<ContactDTO> contactPage = contactService.getAllContacts(pageable);
         
         Map<String, Object> response = new HashMap<>();
-        response.put("contacts", contactPage.getContent());
-        response.put("currentPage", contactPage.getNumber());
-        response.put("totalItems", contactPage.getTotalElements());
+        response.put("content", contactPage.getContent());  // 改为content以符合Spring Data标准
+        
+        // 创建pageable对象
+        Map<String, Object> pageableMap = new HashMap<>();
+        pageableMap.put("pageNumber", contactPage.getNumber());
+        pageableMap.put("pageSize", contactPage.getSize());
+        
+        Map<String, Object> sortMap = new HashMap<>();
+        sortMap.put("sorted", contactPage.getSort().isSorted());
+        sortMap.put("unsorted", contactPage.getSort().isUnsorted());
+        pageableMap.put("sort", sortMap);
+        
+        response.put("pageable", pageableMap);
+        response.put("totalElements", contactPage.getTotalElements());
         response.put("totalPages", contactPage.getTotalPages());
-        response.put("hasNext", contactPage.hasNext());
-        response.put("hasPrevious", contactPage.hasPrevious());
+        response.put("last", contactPage.isLast());
+        response.put("first", contactPage.isFirst());
+        response.put("numberOfElements", contactPage.getNumberOfElements());
+        response.put("size", contactPage.getSize());
+        response.put("number", contactPage.getNumber());
+        response.put("sort", sortMap);
+        response.put("empty", contactPage.isEmpty());
         
         // 添加缓存控制头
         return ResponseEntity.ok()
                 .cacheControl(CacheControl.maxAge(5, TimeUnit.MINUTES).cachePublic())
                 .body(response);
-    }
-    
-    /**
-     * 获取所有联系人（不分页）
-     */
-    @GetMapping("/all")
-    public ResponseEntity<List<ContactDTO>> getAllContactsNoPaging() {
-        List<ContactDTO> contacts = contactService.getAllContacts();
-        return ResponseEntity.ok(contacts);
     }
     
     /**
@@ -106,9 +142,11 @@ public class ContactController {
         Optional<ContactDTO> contact = contactService.getContactById(id);
         if (contact.isPresent()) {
             return ResponseEntity.ok()
-                    .cacheControl(CacheControl.maxAge(15, TimeUnit.MINUTES).cachePublic())
+                    .cacheControl(CacheControl.maxAge(10, TimeUnit.MINUTES).cachePublic())
                     .body(contact.get());
         } else {
+            Map<String, String> error = new HashMap<>();
+            error.put("error", "联系人不存在");
             return ResponseEntity.notFound().build();
         }
     }
@@ -117,12 +155,37 @@ public class ContactController {
      * 更新联系人
      */
     @PutMapping("/{id}")
+    @Timed(value = "contacts.update", description = "Time taken to update contact")
     public ResponseEntity<?> updateContact(@PathVariable Long id, @Valid @RequestBody ContactDTO contactDTO) {
         try {
+            // 检查联系人是否存在
+            if (!contactService.getContactById(id).isPresent()) {
+                Map<String, String> error = new HashMap<>();
+                error.put("error", "联系人不存在");
+                return ResponseEntity.notFound().build();
+            }
+            
+            // 检查电话号码是否已被其他联系人使用
+            if (contactService.isPhoneNumberExists(contactDTO.getPhoneNumber(), id)) {
+                Map<String, String> error = new HashMap<>();
+                error.put("error", "电话号码已被其他联系人使用");
+                return ResponseEntity.badRequest().body(error);
+            }
+            
+            // 检查邮箱是否已被其他联系人使用
+            if (contactDTO.getEmail() != null && !contactDTO.getEmail().isEmpty() && 
+                contactService.isEmailExists(contactDTO.getEmail(), id)) {
+                Map<String, String> error = new HashMap<>();
+                error.put("error", "邮箱已被其他联系人使用");
+                return ResponseEntity.badRequest().body(error);
+            }
+            
             ContactDTO updatedContact = contactService.updateContact(id, contactDTO);
             return ResponseEntity.ok(updatedContact);
-        } catch (RuntimeException e) {
-            return ResponseEntity.badRequest().body(createErrorResponse(e.getMessage()));
+        } catch (Exception e) {
+            Map<String, String> error = new HashMap<>();
+            error.put("error", "更新联系人失败: " + e.getMessage());
+            return ResponseEntity.badRequest().body(error);
         }
     }
     
@@ -130,25 +193,21 @@ public class ContactController {
      * 删除联系人
      */
     @DeleteMapping("/{id}")
+    @Timed(value = "contacts.delete", description = "Time taken to delete contact")
     public ResponseEntity<?> deleteContact(@PathVariable Long id) {
         try {
+            if (!contactService.getContactById(id).isPresent()) {
+                Map<String, String> error = new HashMap<>();
+                error.put("error", "联系人不存在");
+                return ResponseEntity.notFound().build();
+            }
+            
             contactService.deleteContact(id);
-            return ResponseEntity.ok().body(createSuccessResponse("联系人删除成功"));
-        } catch (RuntimeException e) {
-            return ResponseEntity.badRequest().body(createErrorResponse(e.getMessage()));
-        }
-    }
-    
-    /**
-     * 批量删除联系人
-     */
-    @DeleteMapping("/batch")
-    public ResponseEntity<?> deleteContacts(@RequestBody List<Long> ids) {
-        try {
-            contactService.deleteContacts(ids);
-            return ResponseEntity.ok().body(createSuccessResponse("批量删除成功"));
-        } catch (RuntimeException e) {
-            return ResponseEntity.badRequest().body(createErrorResponse(e.getMessage()));
+            return ResponseEntity.noContent().build();
+        } catch (Exception e) {
+            Map<String, String> error = new HashMap<>();
+            error.put("error", "删除联系人失败: " + e.getMessage());
+            return ResponseEntity.badRequest().body(error);
         }
     }
     
@@ -158,31 +217,23 @@ public class ContactController {
     @GetMapping("/search")
     @Timed(value = "contacts.search", description = "Time taken to search contacts")
     public ResponseEntity<Map<String, Object>> searchContacts(
-            @RequestParam String keyword,
+            @RequestParam(required = false, defaultValue = "") String keyword,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size) {
         
-        if (keyword == null || keyword.trim().isEmpty()) {
-            return getAllContacts(page, size, "name", "asc");
-        }
-        
         searchContactCounter.increment();
         
-        Pageable pageable = PageRequest.of(page, size, Sort.by("name").ascending());
-        Page<ContactDTO> contactPage = contactService.searchContacts(keyword.trim(), pageable);
+        Pageable pageable = PageRequest.of(page, size);
+        Page<ContactDTO> contactPage = contactService.searchContacts(keyword, pageable);
         
         Map<String, Object> response = new HashMap<>();
         response.put("contacts", contactPage.getContent());
         response.put("currentPage", contactPage.getNumber());
         response.put("totalItems", contactPage.getTotalElements());
         response.put("totalPages", contactPage.getTotalPages());
-        response.put("hasNext", contactPage.hasNext());
-        response.put("hasPrevious", contactPage.hasPrevious());
         response.put("keyword", keyword);
         
-        return ResponseEntity.ok()
-                .cacheControl(CacheControl.maxAge(3, TimeUnit.MINUTES).cachePublic())
-                .body(response);
+        return ResponseEntity.ok(response);
     }
     
     /**
@@ -224,12 +275,17 @@ public class ContactController {
     }
     
     /**
-     * 获取联系人统计信息
+     * 检查邮箱是否存在
      */
-    @GetMapping("/statistics")
-    public ResponseEntity<Map<String, Long>> getContactStatistics() {
-        Map<String, Long> statistics = contactService.getContactStatistics();
-        return ResponseEntity.ok(statistics);
+    @GetMapping("/check-email")
+    public ResponseEntity<Map<String, Boolean>> checkEmail(
+            @RequestParam String email,
+            @RequestParam(required = false) Long excludeId) {
+        
+        boolean exists = contactService.isEmailExists(email, excludeId);
+        Map<String, Boolean> response = new HashMap<>();
+        response.put("exists", exists);
+        return ResponseEntity.ok(response);
     }
     
     /**
@@ -247,34 +303,32 @@ public class ContactController {
     }
     
     /**
-     * 检查邮箱是否存在
+     * 获取联系人统计信息
      */
-    @GetMapping("/check-email")
-    public ResponseEntity<Map<String, Boolean>> checkEmail(
-            @RequestParam String email,
-            @RequestParam(required = false) Long excludeId) {
-        
-        boolean exists = contactService.isEmailExists(email, excludeId);
-        Map<String, Boolean> response = new HashMap<>();
-        response.put("exists", exists);
-        return ResponseEntity.ok(response);
+    @GetMapping("/statistics")
+    @Timed(value = "contacts.statistics", description = "Time taken to get contact statistics")
+    public ResponseEntity<Map<String, Long>> getContactStatistics() {
+        Map<String, Long> statistics = contactService.getContactStatistics();
+        return ResponseEntity.ok()
+                .cacheControl(CacheControl.maxAge(1, TimeUnit.HOURS).cachePublic())
+                .body(statistics);
     }
     
-    // 创建错误响应
-    private Map<String, Object> createErrorResponse(String message) {
-        Map<String, Object> response = new HashMap<>();
-        response.put("success", false);
-        response.put("message", message);
-        response.put("timestamp", System.currentTimeMillis());
-        return response;
-    }
-    
-    // 创建成功响应
-    private Map<String, Object> createSuccessResponse(String message) {
-        Map<String, Object> response = new HashMap<>();
-        response.put("success", true);
-        response.put("message", message);
-        response.put("timestamp", System.currentTimeMillis());
-        return response;
+    /**
+     * 批量删除联系人
+     */
+    @DeleteMapping("/batch")
+    @Timed(value = "contacts.batch.delete", description = "Time taken to batch delete contacts")
+    public ResponseEntity<?> batchDeleteContacts(@RequestBody List<Long> ids) {
+        try {
+            contactService.deleteContacts(ids);
+            Map<String, String> response = new HashMap<>();
+            response.put("message", "成功删除 " + ids.size() + " 个联系人");
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            Map<String, String> error = new HashMap<>();
+            error.put("error", "批量删除失败: " + e.getMessage());
+            return ResponseEntity.badRequest().body(error);
+        }
     }
 }

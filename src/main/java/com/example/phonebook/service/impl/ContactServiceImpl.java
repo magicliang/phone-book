@@ -52,7 +52,6 @@ public class ContactServiceImpl implements ContactService {
     
     @Override
     @Transactional(readOnly = true)
-    @Cacheable(value = "contact", key = "#id")
     public Optional<ContactDTO> getContactById(Long id) {
         return contactRepository.findById(id)
                 .map(this::convertToDTO);
@@ -187,7 +186,17 @@ public class ContactServiceImpl implements ContactService {
     public Map<String, Long> getContactStatistics() {
         Map<String, Long> statistics = new HashMap<>();
         statistics.put("total", contactRepository.count());
-        // Add more statistics as needed
+        
+        // 获取按分类统计的数据
+        List<Object[]> categoryStats = contactRepository.countByCategory();
+        for (Object[] stat : categoryStats) {
+            String category = (String) stat[0];
+            Long count = (Long) stat[1];
+            if (category != null && !category.trim().isEmpty()) {
+                statistics.put(category, count);
+            }
+        }
+        
         return statistics;
     }
     

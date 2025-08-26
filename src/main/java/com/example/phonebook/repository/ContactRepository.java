@@ -41,17 +41,23 @@ public interface ContactRepository extends JpaRepository<Contact, Long> {
     })
     Page<Contact> findByCategory(String category, Pageable pageable);
     
-    // 根据姓名或电话号码搜索联系人
+    // 根据姓名或电话号码搜索联系人 - 智能匹配
+    @Query("SELECT c FROM Contact c WHERE " +
+           "LOWER(c.name) LIKE LOWER(CONCAT('%', :keyword, '%')) OR " +
+           "c.phoneNumber LIKE CONCAT('%', :keyword, '%')")
     @QueryHints({
         @QueryHint(name = "org.hibernate.cacheable", value = "true")
     })
-    List<Contact> findByNameContainingIgnoreCaseOrPhoneNumberContaining(String name, String phoneNumber);
+    List<Contact> findByNameContainingIgnoreCaseOrPhoneNumberContaining(@Param("keyword") String keyword, @Param("keyword") String phoneNumber);
     
-    // 根据姓名或电话号码搜索联系人（分页）
+    // 根据姓名或电话号码搜索联系人（分页）- 智能匹配
+    @Query("SELECT c FROM Contact c WHERE " +
+           "LOWER(c.name) LIKE LOWER(CONCAT('%', :keyword, '%')) OR " +
+           "c.phoneNumber LIKE CONCAT('%', :keyword, '%')")
     @QueryHints({
         @QueryHint(name = "org.hibernate.cacheable", value = "true")
     })
-    Page<Contact> findByNameContainingIgnoreCaseOrPhoneNumberContaining(String name, String phoneNumber, Pageable pageable);
+    Page<Contact> findByNameContainingIgnoreCaseOrPhoneNumberContaining(@Param("keyword") String keyword, @Param("keyword") String phoneNumber, Pageable pageable);
     
     // 根据邮箱查找联系人
     @QueryHints({
@@ -135,4 +141,46 @@ public interface ContactRepository extends JpaRepository<Contact, Long> {
         @QueryHint(name = "org.hibernate.cacheable", value = "true")
     })
     long countAllContacts();
+    
+    // 搜索联系人（分页）- 简化的模糊搜索逻辑
+    @Query("SELECT c FROM Contact c WHERE " +
+           "LOWER(c.name) LIKE LOWER(CONCAT('%', :keyword, '%')) OR " +
+           "c.phoneNumber LIKE CONCAT('%', :keyword, '%') OR " +
+           "LOWER(c.email) LIKE LOWER(CONCAT('%', :keyword, '%')) " +
+           "ORDER BY " +
+           "CASE WHEN c.phoneNumber = :keyword THEN 1 " +
+           "     WHEN LOWER(c.name) = LOWER(:keyword) THEN 2 " +
+           "     ELSE 3 END")
+    Page<Contact> searchByKeyword(@Param("keyword") String keyword, Pageable pageable);
+    
+    // 检查电话号码是否存在
+    boolean existsByPhoneNumber(String phoneNumber);
+    
+    // 检查邮箱是否存在
+    boolean existsByEmail(String email);
+    
+    // 获取所有分类
+    @Query("SELECT DISTINCT c.category FROM Contact c WHERE c.category IS NOT NULL ORDER BY c.category")
+    List<String> findAllCategories();
+    
+    // 为测试添加的额外方法
+    @Query("SELECT c FROM Contact c WHERE " +
+           "LOWER(c.name) LIKE LOWER(CONCAT('%', :keyword, '%')) OR " +
+           "c.phoneNumber LIKE CONCAT('%', :keyword, '%') OR " +
+           "LOWER(c.email) LIKE LOWER(CONCAT('%', :keyword, '%')) OR " +
+           "LOWER(c.category) LIKE LOWER(CONCAT('%', :keyword, '%'))")
+    List<Contact> searchByKeyword(@Param("keyword") String keyword);
+    
+    List<Contact> findByPhoneNumberContaining(String phoneNumber);
+    
+    List<Contact> findByEmailContainingIgnoreCase(String email);
+    
+    @Query("SELECT c FROM Contact c WHERE " +
+           "LOWER(c.name) LIKE LOWER(CONCAT('%', :keyword, '%')) OR " +
+           "c.phoneNumber LIKE CONCAT('%', :keyword, '%') OR " +
+           "LOWER(c.email) LIKE LOWER(CONCAT('%', :keyword, '%')) OR " +
+           "LOWER(c.category) LIKE LOWER(CONCAT('%', :keyword, '%'))")
+    List<Contact> findByKeyword(@Param("keyword") String keyword);
+    
+    long countByCategory(String category);
 }
