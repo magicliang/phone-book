@@ -1,10 +1,26 @@
+# 测试环境配置
 spring:
+  profiles:
+    active: test
+    
+  # H2测试数据库配置
   datasource:
-    url: jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
+    url: jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE;MODE=MySQL;DATABASE_TO_LOWER=TRUE;CASE_INSENSITIVE_IDENTIFIERS=TRUE
     driver-class-name: org.h2.Driver
     username: sa
     password: 
+    
+    # 测试环境连接池配置
+    hikari:
+      maximum-pool-size: 3
+      minimum-idle: 1
+      connection-timeout: 10000
+      idle-timeout: 300000
+      max-lifetime: 600000
+      pool-name: TestPhonebookHikariCP
+      leak-detection-threshold: 10000
   
+  # JPA测试配置
   jpa:
     hibernate:
       ddl-auto: create-drop
@@ -13,18 +29,38 @@ spring:
       hibernate:
         format_sql: true
         dialect: org.hibernate.dialect.H2Dialect
+        use_sql_comments: true
+        # 测试环境性能配置
+        jdbc:
+          batch_size: 5
+          fetch_size: 10
+        order_inserts: true
+        order_updates: true
+        # 测试统计
+        generate_statistics: false
   
+  # H2控制台 - 测试调试
   h2:
     console:
       enabled: true
-  
-  logging:
-    level:
-      com.example.phonebook: DEBUG
-      org.springframework.web: DEBUG
-      org.hibernate.SQL: DEBUG
-      org.hibernate.type.descriptor.sql.BasicBinder: TRACE
+      path: /h2-console
+      settings:
+        web-allow-others: false
+        trace: false
 
+# 测试环境日志配置
+logging:
+  level:
+    com.example.phonebook: DEBUG
+    org.springframework.web: DEBUG
+    org.hibernate.SQL: DEBUG
+    org.hibernate.type.descriptor.sql.BasicBinder: TRACE
+    org.springframework.transaction: DEBUG
+    org.springframework.test: DEBUG
+  pattern:
+    console: "%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"
+
+# 测试环境监控配置
 management:
   endpoints:
     web:

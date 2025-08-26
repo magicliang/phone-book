@@ -1,0 +1,81 @@
+# 开发环境配置
+spring:
+  profiles:
+    active: dev
+    
+  # H2数据库配置 - 开发环境
+  datasource:
+    url: jdbc:h2:mem:phonebook_dev;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE;MODE=MySQL;DATABASE_TO_LOWER=TRUE;CASE_INSENSITIVE_IDENTIFIERS=TRUE;INIT=CREATE SCHEMA IF NOT EXISTS phonebook
+    username: sa
+    password: 
+    driver-class-name: org.h2.Driver
+    
+    # 开发环境连接池配置
+    hikari:
+      maximum-pool-size: 5
+      minimum-idle: 1
+      connection-timeout: 30000
+      idle-timeout: 600000
+      max-lifetime: 1800000
+      pool-name: DevPhonebookHikariCP
+      leak-detection-threshold: 30000
+      
+  # H2控制台 - 开发调试
+  h2:
+    console:
+      enabled: true
+      path: /h2-console
+      settings:
+        web-allow-others: true
+        trace: true
+        
+  # JPA配置 - 开发环境
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    show-sql: true
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.H2Dialect
+        format_sql: true
+        use_sql_comments: true
+        # 开发环境性能配置
+        jdbc:
+          batch_size: 10
+          fetch_size: 25
+        order_inserts: true
+        order_updates: true
+        # 统计信息 - 开发调试
+        generate_statistics: true
+        session:
+          events:
+            log:
+              LOG_QUERIES_SLOWER_THAN_MS: 100
+
+# 开发环境日志配置
+logging:
+  level:
+    com.example.phonebook: DEBUG
+    org.springframework.web: DEBUG
+    org.hibernate.SQL: DEBUG
+    org.hibernate.type.descriptor.sql.BasicBinder: TRACE
+    org.springframework.transaction: DEBUG
+    org.springframework.orm.jpa: DEBUG
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"
+
+# 开发环境监控配置
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "*"
+  endpoint:
+    health:
+      show-details: always
+    shutdown:
+      enabled: true
+  metrics:
+    export:
+      prometheus:
+        enabled: true
